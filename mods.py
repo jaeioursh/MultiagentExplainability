@@ -1,6 +1,7 @@
 import datetime
 from code.reward_2 import * # Agent Reward 
 from code.curriculum import * # Agent Curriculum
+from mod_funcs import * 
 
 
 def globalRewardMod(sim):
@@ -456,3 +457,98 @@ def differenceRewardCoupCurrMod5(sim):
         
     sim.data["Pickle Save File Name"] = "log/%s/%s/pickle/data %s.pickle"%\
         (sim.data["Specifics Name"], sim.data["Mod Name"], dateTimeString)
+        
+##############################
+#
+#name:assignHomogeneousPolicy
+#
+#desc:assigns the same policy to each agent
+#
+#call function after sim.reset
+#note: data["World Index"] is used to determine which 
+#population to use and must also be set
+##############################            
+        
+def assignHomogeneousPolicy(sim):
+    data=sim.data
+    number_agents = data['Number of Agents']
+    populationCol = data['Agent Populations']
+    worldIndex = data["World Index"]
+    policyCol = [None] * number_agents
+    for agentIndex in range(number_agents):
+        policyCol[agentIndex] = populationCol[0][worldIndex]
+    data["Agent Policies"] = policyCol 
+
+
+##############################
+#
+#name:poiVelocity(sim)
+#
+#desc:poi move with a seeded random velocity
+#
+#call function after each sim.step 
+##############################    
+def poiVelocity(sim):
+    data=sim.data
+    
+    if not "Poi Velocity" in data:
+        state=np.random.get_state()
+        np.random.seed(123)
+        data["Poi Velocity"]=np.random.random(data["Poi Positions"].shape)-.5  
+        np.random.set_state(state)   
+    data["Poi Positions"]+=data["Poi Velocity"]*0.5
+    
+##############################
+#
+#name:abilityVariation
+#
+#desc:agents have varying max speeds from 50% to 100%
+#
+#call function after action is calculated
+##############################
+
+        
+def abilityVariation(sim):
+    data=sim.data
+    
+    variation=np.linspace(0.5,1.0, sim.data["Number of Agents"])
+    
+    for n in range(sim.data["Number of Agents"]):
+        sim.data["Agent Actions"][n,:] *= variation[n]  
+              
+##############################
+#
+# name:sequentialPoi
+#
+# desc:agents must go to poi type-a to recieve a "key" 
+# and then group at poi type-b to open the "lock" and
+# recieve a reward. Poi[0:n/2] = Type B and Poi[n/2:n] = Type A
+#
+#call function after sim is created and after each sim.reset
+##############################
+def sequentialPoi(sim):
+
+    sim.data["Sequential"]=True
+    sim.data["Observation Function"]=doAgentSenseMod
+    
+    sim.data["Reward Function"]=assignGlobalRewardMod
+    sim.data["Item Held"] =np.zeros((sim.data["Number of Agents"]), dtype = np.int32)
+    if not "View Distance" in sim.data: sim.data["View Distance"]= -1
+    
+##############################
+#
+#name:lowVisibility
+#
+#desc:agents can only see poi within 15 units
+#
+#call function after sim is created
+##############################
+    
+def lowVisibility(sim):
+    if not "Sequential" in sim.data: sim.data["Sequential"]= False
+    
+    sim.data["View Distance"]=15    
+	
+    sim.data["Observation Function"]=doAgentSenseMod
+
+    

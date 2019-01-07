@@ -1,88 +1,64 @@
-from rover_domain_core_gym import RoverDomainCoreGym
-from mods import *
-import datetime
-from code.world_setup import * # Rover Domain Construction 
-from code.agent_domain_2 import * # Rover Domain Dynamic  
-from code.trajectory_history import * # Agent Position Trajectory History 
-from code.reward_2 import * # Agent Reward 
-from code.reward_history import * # Performance Recording 
-from code.ccea_2 import * # CCEA 
-from code.save_to_pickle import * # Save data as pickle file
-import random
+"""
+An example using the rover domain gym-style interface and the standard, included CCEA learning algorithms.
+This is a minimal example, showing the minimal Gym interface.
+"""
+from rover_domain_core_gym import RoverDomainGym
+import code.ccea_2 as ccea
+import code.agent_domain_2 as domain
+import mods
 
 
-stepCount = 5
-trainCountXEpisode = 3
-testCountXEpisode = 1
-episodeCount =  20
+episodeCount = 1000  # Number of learning episodes
 
-# NOTE: Add the mod functions (variables) to run to modCol here:
-modCol = [
-    globalRewardMod,
-    differenceRewardMod,
-    dppRewardMod
-]
+sim = RoverDomainGym()
+#mods.sequentialPoi(sim)
+#mods.lowVisibility(sim)
+sim.reset()
 
-i = 0
-while True:
-    print("Run %i"%(i))
-    random.shuffle(modCol)
-    for mod in modCol:
-        sim = RoverDomainCoreGym()
-        mod(sim)
+sim.data["Coupling"]=2
+
+obs_size=len(sim.data["Agent Observations"][0])
+
+print(obs_size)
+ccea.initCcea(input_shape=obs_size, num_outputs=2, num_units=32)(sim.data)
+
+for episodeIndex in range(episodeCount):
+    sim.data["Episode Index"] = episodeIndex
+    populationSize=len(sim.data['Agent Populations'][0])
+    GlobalRewards=[]
+    
+    for worldIndex in range(populationSize):
+        sim.data["World Index"]=worldIndex
         
-        #Trial Begins
-        createRewardHistory(sim.data)
-        initCcea(input_shape= 8, num_outputs=2, num_units = 32)(sim.data)
-        sim.data["Steps"] = stepCount
+        obs = sim.reset()
+        #mods.sequentialPoi(sim)
         
-        for episodeIndex in range(episodeCount):
-            sim.data["Episode Index"] = episodeIndex
+        ccea.assignCceaPolicies(sim.data)
+        #mods.assignHomogeneousPolicy(sim)
+
+        done = False
+        stepCount = 0
+   
+        while not done:
+
+            #mods.poiVelocity(sim)
+        
+            # Select actions and create the joint action from the simulation data
+            # Note that this specific function extracts "obs" from the data structure directly, which is why obs is not
+            # directly used in this example.
             
-            # Training Phase
+            domain.doAgentProcess(sim.data)
+            #mods.abilityVariation(sim)
             
-            obs = sim.reset('Train', True)
-            
-            for worldIndex in range(trainCountXEpisode):
-                sim.data["World Index"] = worldIndex
-                obs = sim.reset('Train', False)
-                assignCceaPolicies(sim.data)
+            jointAction = sim.data["Agent Actions"]
+
+            obs, reward, done, info = sim.step(jointAction)
+            stepCount += 1
+            if (episodeIndex %50==0 and worldIndex==0):
+                sim.render()
                 
-                done = False
-                stepCount = 0
-                while not done:
-                    doAgentProcess(sim.data)
-                    jointAction = sim.data["Agent Actions"]
-                    obs, reward, done, info = sim.step(jointAction)
-                    stepCount += 1
-                    
-                rewardCceaPolicies(sim.data)
-                    
-                    
-            # Testing Phase
-                    
-            obs = sim.reset('Test', True)
-            assignBestCceaPolicies(sim.data)        
-                    
-            for worldIndex in range(testCountXEpisode):
-                sim.data["World Index"] = worldIndex
-                obs = sim.reset('Test', False)
-                
-                done = False
-                stepCount = 0
-                while not done:
-                    doAgentProcess(sim.data)
-                    jointAction = sim.data["Agent Actions"]
-                    obs, reward, done, info = sim.step(jointAction)
-                    stepCount += 1
-                    
-            evolveCceaPolicies(sim.data)
-            updateRewardHistory(sim.data)
-            
-            # Trial End
-            saveRewardHistory(sim.data)
-            saveTrajectoryHistories(sim.data)
+        GlobalRewards.append(sim.data["Global Reward"])    
+        ccea.rewardCceaPolicies(sim.data)
         
-        
-        
-    i += 1
+    ccea.evolveCceaPolicies(sim.data)
+    print(episodeIndex,max(GlobalRewards))
