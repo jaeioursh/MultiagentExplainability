@@ -256,6 +256,18 @@ class RoverDomainGym(SimulationCore):
         if ("Sequential" in self.data and self.data["Sequential"]):
             plt.scatter(self.data["Poi Positions"][nPois:,0],self.data["Poi Positions"][nPois:,1])
             plt.scatter(self.data["Poi Positions"][:nPois,0],self.data["Poi Positions"][:nPois,1])
+        elif ("Number of POI Types" in self.data):
+            
+            ntypes=self.data["Number of POI Types"]
+            xpoints=[[] for i in range(ntypes)]
+            ypoints=[[] for i in range(ntypes)]
+            for i in range(len(self.data["Poi Positions"])):
+                xpoints[i%ntypes].append(self.data["Poi Positions"][i,0])
+                ypoints[i%ntypes].append(self.data["Poi Positions"][i,1])
+            for i in range(ntypes):
+                plt.scatter(xpoints[i],ypoints[i],label=str(i))
+                
+                 
         else:
             plt.scatter(self.data["Poi Positions"][:,0],self.data["Poi Positions"][:,1])
         

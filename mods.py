@@ -551,4 +551,38 @@ def lowVisibility(sim):
 	
     sim.data["Observation Function"]=doAgentSenseMod
 
+
+def simpleReward(data):
+    number_agents=data["Number of Agents"]
+    globalReward=np.sum(data["Item Held"])
+    data["Global Reward"] = globalReward
+    data["Agent Rewards"] = np.ones(number_agents) * globalReward
+
     
+##############################
+#
+# name:recipePoi
+#
+# desc: A recipe of POI types is given to the agent. The agents 
+# must go to each poi on the list to recieve a reward. The global reward 
+# is determined by the number of agents which complete the recipe
+#  
+#
+#call function after sim is created and before each sim.reset
+##############################
+def recipePoi(sim):
+
+    
+    sim.data["Observation Function"]=doAgentSenseRecipe2
+    #sim.data["Reward Function"]=assignGlobalRewardSimple  #reward for each recipe completed
+    sim.data["Reward Function"]=simpleReward              #reward for each step of recipe completed 
+    
+    sim.data["Recipe"] = np.array([0,3,2],dtype=np.int32) #recipe, each item is a POI type from 0 to (N-Poi Types)-1 
+    sim.data["Recipe Size"]=len(sim.data["Recipe"])
+    sim.data["Ordered"] = 1                              #flag for whether order matters
+    sim.data["Number of POI Types"] = 4
+    sim.data["Coupling Limit"]=5                            #max number of agents which can see view a poi at a time 
+    sim.data["Item Held"] =np.zeros((sim.data["Number of Agents"],sim.data["Recipe Size"]), dtype = np.int32)
+
+
+
