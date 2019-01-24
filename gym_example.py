@@ -7,7 +7,6 @@ import code.ccea_2 as ccea
 import code.agent_domain_2 as domain
 import mods
 
-from renderer import*
 
 episodeCount = 1000  # Number of learning episodes
 
