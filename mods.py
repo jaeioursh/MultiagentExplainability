@@ -458,16 +458,15 @@ def differenceRewardCoupCurrMod5(sim):
     sim.data["Pickle Save File Name"] = "log/%s/%s/pickle/data %s.pickle"%\
         (sim.data["Specifics Name"], sim.data["Mod Name"], dateTimeString)
         
-##############################
-#
-#name:assignHomogeneousPolicy
-#
-#desc:assigns the same policy to each agent
-#
-#call function after sim.reset
-#note: data["World Index"] is used to determine which 
-#population to use and must also be set
-##############################            
+
+
+'''
+:param sim:  provides a simulation with the global data structure
+:returns: none
+:pre: policies have been assigned to each agent
+:post: one of the existing policies is reassigned to each agent
+:note: call function after sim.reset. data["World Index"] is used to determine which population to use and must also be set
+'''           
         
 def assignHomogeneousPolicy(sim):
     data=sim.data
@@ -479,15 +478,14 @@ def assignHomogeneousPolicy(sim):
         policyCol[agentIndex] = populationCol[0][worldIndex]
     data["Agent Policies"] = policyCol 
 
-
-##############################
-#
-#name:poiVelocity(sim)
-#
-#desc:poi move with a seeded random velocity
-#
-#call function after each sim.step 
-##############################    
+   
+'''
+:param sim:  provides a simulation with the global data structure
+:returns: none
+:pre: none
+:post:poi move with a seeded random velocity
+:note: call function after sim.step
+'''
 def poiVelocity(sim):
     data=sim.data
     
@@ -498,15 +496,14 @@ def poiVelocity(sim):
         np.random.set_state(state)   
     data["Poi Positions"]+=data["Poi Velocity"]*0.5
     
-##############################
-#
-#name:abilityVariation
-#
-#desc:agents have varying max speeds from 50% to 100%
-#
-#call function after action is calculated
-##############################
 
+'''
+:param sim:  provides a simulation with the global data structure
+:returns: none
+:pre: An action has been determined
+:post: agents have varying max speeds from 50% to 100%
+:note: call function after actions are determined 
+'''
         
 def abilityVariation(sim):
     data=sim.data
@@ -515,34 +512,48 @@ def abilityVariation(sim):
     
     for n in range(sim.data["Number of Agents"]):
         sim.data["Agent Actions"][n,:] *= variation[n]  
-              
-##############################
-#
-# name:sequentialPoi
-#
-# desc:agents must go to poi type-a to recieve a "key" 
-# and then group at poi type-b to open the "lock" and
-# recieve a reward. Poi[0:n/2] = Type B and Poi[n/2:n] = Type A
-#
-#call function after sim is created and after each sim.reset
-##############################
+
+'''
+:param data:  global data structure
+:returns: none
+:pre: an array holds whether or not an agent has found a "key"
+:post: array is cleared, indicating that no agents are holding "keys"
+:note: none 
+'''    
+
+def clearItemHeld(data):
+    nAgents=sim.data["Number of Agents"]
+    sim.data["Item Held"] =np.zeros((nAgents), dtype = np.int32)
+    
+
+'''
+:param sim:  Provides a simulation with the global data structure
+:returns: None
+:pre: None
+:post: Agents must go to poi type-a to recieve a "key" and then group at poi type-b to open the "lock" and recieve a reward. Poi[0:n/2] = Type B and Poi[n/2:n] = Type A
+:note: Call function after sim is created 
+'''
+
 def sequentialPoi(sim):
 
     sim.data["Sequential"]=True
     sim.data["Observation Function"]=doAgentSenseMod
     
     sim.data["Reward Function"]=assignGlobalRewardMod
-    sim.data["Item Held"] =np.zeros((sim.data["Number of Agents"]), dtype = np.int32)
+    
+    sim.worldTrainBeginFuncCol.append(  clearItemHeld  )
+    
     if not "View Distance" in sim.data: sim.data["View Distance"]= -1
     
-##############################
-#
-#name:lowVisibility
-#
-#desc:agents can only see poi within 15 units
-#
-#call function after sim is created
-##############################
+
+
+'''
+:param sim: Provides a simulation with the global data structure
+:returns: None
+:pre: A visibility range is given to each agent
+:post: Agents can only perceive items in the visibility range
+:note: Call function after sim is created 
+'''
     
 def lowVisibility(sim):
     if not "Sequential" in sim.data: sim.data["Sequential"]= False
@@ -551,6 +562,13 @@ def lowVisibility(sim):
 	
     sim.data["Observation Function"]=doAgentSenseMod
 
+'''
+:param data:  Global data structure
+:returns: None
+:pre: One step of the simulation has passed
+:post: Rewards are assigned based on the number of total parts of the recipe completed for each agent. The max reward is: Number_of_Agents * Size_of_Recipe
+:note: None 
+''' 
 
 def simpleReward(data):
     number_agents=data["Number of Agents"]
@@ -558,18 +576,28 @@ def simpleReward(data):
     data["Global Reward"] = globalReward
     data["Agent Rewards"] = np.ones(number_agents) * globalReward
 
+'''
+:param data:  Global data structure
+:returns: None
+:pre: An array holds whether or not an agent has complete a part of the recipe
+:post: Array is cleared, indicating that no agents have completed any part of the recipe
+:note: None 
+''' 
+
+def resetItemHeld(data):
+    nAgents =    data["Number of Agents"]
+    recipeSize = data["Recipe Size" ]
+    data["Item Held"] = np.zeros(( nAgents,recipeSize), dtype = np.int32)  
     
-##############################
-#
-# name:recipePoi
-#
-# desc: A recipe of POI types is given to the agent. The agents 
-# must go to each poi on the list to recieve a reward. The global reward 
-# is determined by the number of agents which complete the recipe
-#  
-#
-#call function after sim is created and before each sim.reset
-##############################
+
+'''
+:param sim:  Provides a simulation with the global data structure
+:returns: None
+:pre: A recipe of POI types is given to the agent.
+:post:  The agents must go to each poi on the list to recieve a reward. The global reward is determined by the number of agents which complete the recipe
+:note: Call function after sim is created. Recipe completion can be ordered or unordered 
+'''
+
 def recipePoi(sim):
 
     
@@ -582,7 +610,8 @@ def recipePoi(sim):
     sim.data["Ordered"] = 1                              #flag for whether order matters
     sim.data["Number of POI Types"] = 4
     sim.data["Coupling Limit"]=5                            #max number of agents which can see view a poi at a time 
-    sim.data["Item Held"] =np.zeros((sim.data["Number of Agents"],sim.data["Recipe Size"]), dtype = np.int32)
+    
+    sim.worldTrainBeginFuncCol.append(  resetItemHeld  )
 
 
 

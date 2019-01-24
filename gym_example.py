@@ -7,7 +7,7 @@ import code.ccea_2 as ccea
 import code.agent_domain_2 as domain
 import mods
 
-#from renderer import*
+from renderer import*
 
 episodeCount = 1000  # Number of learning episodes
 
@@ -32,17 +32,14 @@ for episodeIndex in range(episodeCount):
     for worldIndex in range(populationSize):
         sim.data["World Index"]=worldIndex
         
-        mods.recipePoi(sim)
         obs = sim.reset()
-        
-        #mods.sequentialPoi(sim)
-        
+         
         #ccea.assignCceaPolicies(sim.data)
         mods.assignHomogeneousPolicy(sim)
 
         done = False
         stepCount = 0
-   
+        
         while not done:
 
             #mods.poiVelocity(sim)
@@ -61,7 +58,6 @@ for episodeIndex in range(episodeCount):
             stepCount += 1
             if ( episodeIndex%50==49 and worldIndex==0):
                 sim.render()
-                #render(sim.data)
                 
                 
         GlobalRewards.append(sim.data["Global Reward"])    
