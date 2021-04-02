@@ -62,7 +62,8 @@ cdef mutateMat(double[:,:] mat, double m, double mr):
     npMutation *= np.random.uniform(0, 1, shape) < mr
     cdef double[:,:] mutation = npMutation
     addInPlaceMat(mat, mutation)
-        
+
+@cython.auto_pickle(True)        
 cdef class Evo_MLP:
     cdef public double[:,:] inToHiddenMat
     cdef public double[:] inToHiddenBias
@@ -104,7 +105,19 @@ cdef class Evo_MLP:
         self.hiddenToOutBias = self.npHiddenToOutBias
         self.hidden = self.npHidden
         self.out = self.npOut
-
+    def __getstate__(self):
+        return (self.inToHiddenMat.base,
+        self.inToHiddenBias.base,
+        self.hiddenToOutMat.base,
+        self.hiddenToOutBias.base,
+        self.hidden.base,
+        self.out.base,
+        self.input_shape,
+        self.num_outputs,
+        self.num_units
+        )
+    def __setstate__(self,x):
+        self.inToHiddenMat ,self.inToHiddenBias,self.hiddenToOutMat,self.hiddenToOutBias, self.hidden,self.out,self.input_shape,self.num_outputs,self.num_units = x
     cpdef get_action(self, double[:] state):
         mul(self.inToHiddenMat, state, self.hidden)
         addInPlace(self.hidden, self.inToHiddenBias)
@@ -112,11 +125,11 @@ cdef class Evo_MLP:
         mul(self.hiddenToOutMat, self.hidden, self.out)
         addInPlace(self.out, self.hiddenToOutBias)
         tanhInPlace(self.out)
-        return self.npOut
+        return self.npOut #change
 
     cpdef mutate(self):
         cdef double m = 1
-        cdef double mr = 0.01
+        cdef double mr = 0.05
         mutateMat(self.inToHiddenMat, m, mr)
         mutate(self.inToHiddenBias, m, mr)
         mutateMat(self.hiddenToOutMat, m, mr)
@@ -192,13 +205,29 @@ def assignBestCceaPolicies(data):
         #policyCol[agentIndex] = populationCol[agentIndex][0]
     data["Agent Policies"] = policyCol
 
+def assignCceaPoliciesHOF(data):
+    assignBestCceaPolicies(data)
+    curAgent = data["Current Agent"]
+    worldIndex = data["World Index"]
+    populationCol = data['Agent Populations']
+
+    data["Agent Policies"][curAgent] = populationCol[curAgent][worldIndex]
+
 def rewardCceaPolicies(data):
     policyCol = data["Agent Policies"]
     number_agents = data['Number of Agents']
     rewardCol = data["Agent Rewards"]
     for agentIndex in range(number_agents):
         policyCol[agentIndex].fitness = rewardCol[agentIndex]
- 
+
+def rewardCceaPoliciesHOF(data):
+    policyCol = data["Agent Policies"]
+    curAgent = data["Current Agent"]
+    number_agents = data['Number of Agents']
+    rewardCol = data["Agent Rewards"]
+    
+    policyCol[curAgent].fitness = rewardCol[curAgent]
+
 def rewardCceaPolicies2(data):
     policyCol = data["Agent Policies"]
     number_agents = data['Number of Agents']

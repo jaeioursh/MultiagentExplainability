@@ -11,28 +11,91 @@ def assignGlobalReward(data):
     cdef int historyStepCount = data["Steps"] + 1
     cdef int coupling = data["Coupling"]
     cdef double observationRadiusSqr = data["Observation Radius"] ** 2
-    cdef double[:, :, :] agentPositionHistory = data["Agent Position History"]
+    cdef double[:, :] agentPositionHistory = data["Agent Positions"]
     cdef double[:] poiValueCol = data['Poi Values']
     cdef double[:, :] poiPositionCol = data["Poi Positions"]
-  
+    cdef stepIndex = data["Step Index"]
     
-    cdef int poiIndex, stepIndex, agentIndex, observerCount
+    cdef int poiIndex, agentIndex, observerCount
     cdef double separation0, separation1, closestObsDistanceSqr, distanceSqr, stepClosestObsDistanceSqr
     cdef double Inf = float("inf")
     
     cdef double globalReward = 0.0
-    
+    cdef double scale=0.0
     
     for poiIndex in range(number_pois):
         closestObsDistanceSqr = Inf
-        for stepIndex in range(historyStepCount):
+        #for stepIndex in range(historyStepCount):
+        # Count how many agents observe poi, update closest distance if necessary
+        observerCount = 0
+        stepClosestObsDistanceSqr = 0
+        for agentIndex in range(number_agents):
+            # Calculate separation distance between poi and agent
+            separation0 = poiPositionCol[poiIndex, 0] - agentPositionHistory[agentIndex, 0]
+            separation1 = poiPositionCol[poiIndex, 1] - agentPositionHistory[agentIndex, 1]
+            distanceSqr = separation0 * separation0 + separation1 * separation1
+            
+            # Check if agent observes poi, update closest step distance
+            if distanceSqr < observationRadiusSqr:
+                observerCount += 1
+                #if distanceSqr > stepClosestObsDistanceSqr:
+                stepClosestObsDistanceSqr += distanceSqr
+
+        stepClosestObsDistanceSqr /= (float(observerCount)+0.001)   
+                    
+        # update closest distance only if poi is observed    
+        if observerCount >= coupling:
+            scale=1.0
+            if stepClosestObsDistanceSqr < closestObsDistanceSqr:
+                closestObsDistanceSqr = stepClosestObsDistanceSqr
+        else:
+            scale=float(observerCount)/float(coupling)
+        # add to global reward if poi is observed 
+        if closestObsDistanceSqr < observationRadiusSqr:
+            if closestObsDistanceSqr < minDistanceSqr:
+                closestObsDistanceSqr = minDistanceSqr
+            closestObsDistanceSqr=(observationRadiusSqr-closestObsDistanceSqr)/(observationRadiusSqr-minDistanceSqr)
+        globalReward += poiValueCol[poiIndex]*scale #* closestObsDistanceSqr
+    
+    data["Global Reward"] = globalReward
+    data["Agent Rewards"] = np.ones(number_agents) * globalReward
+
+
+ 
+@cython.boundscheck(False)  # Deactivate bounds checking
+@cython.wraparound(False)   # Deactivate negative indexing.
+def assignDifferenceReward(data):
+    cdef int number_agents = data['Number of Agents']
+    cdef int number_pois = data['Number of POIs'] 
+    cdef double minDistanceSqr = data["Minimum Distance"] ** 2
+    cdef int historyStepCount = data["Steps"] + 1
+    cdef int coupling = data["Coupling"]
+    cdef double observationRadiusSqr = data["Observation Radius"] ** 2
+    cdef double[:, :] agentPositionHistory = data["Agent Positions"]
+    cdef double[:] poiValueCol = data['Poi Values']
+    cdef double[:, :] poiPositionCol = data["Poi Positions"]
+
+    cdef int poiIndex, stepIndex, agentIndex, observerCount, otherAgentIndex
+    cdef double separation0, separation1, closestObsDistanceSqr, distanceSqr, stepClosestObsDistanceSqr
+    cdef double Inf = float("inf")
+    
+    cdef double globalReward = 0.0
+    cdef double globalWithoutReward = 0.0
+    
+    cdef double scale=0.0
+    npDifferenceRewardCol = np.zeros(number_agents)
+    cdef double[:] differenceRewardCol = npDifferenceRewardCol
+    
+    for poiIndex in range(number_pois):
+        closestObsDistanceSqr = Inf
+        for stepIndex in range(historyStepCount-1,historyStepCount):
             # Count how many agents observe poi, update closest distance if necessary
             observerCount = 0
             stepClosestObsDistanceSqr = Inf
             for agentIndex in range(number_agents):
                 # Calculate separation distance between poi and agent
-                separation0 = poiPositionCol[poiIndex, 0] - agentPositionHistory[stepIndex, agentIndex, 0]
-                separation1 = poiPositionCol[poiIndex, 1] - agentPositionHistory[stepIndex, agentIndex, 1]
+                separation0 = poiPositionCol[poiIndex, 0] - agentPositionHistory[agentIndex, 0]
+                separation1 = poiPositionCol[poiIndex, 1] - agentPositionHistory[agentIndex, 1]
                 distanceSqr = separation0 * separation0 + separation1 * separation1
                 
                 # Check if agent observes poi, update closest step distance
@@ -44,14 +107,115 @@ def assignGlobalReward(data):
                         
             # update closest distance only if poi is observed    
             if observerCount >= coupling:
+                scale=1.0
                 if stepClosestObsDistanceSqr < closestObsDistanceSqr:
                     closestObsDistanceSqr = stepClosestObsDistanceSqr
+            else:
+                scale=float(observerCount)/float(coupling)
+                #print(scale,observerCount)
+            
+        # add to global reward if poi is observed 
+        if closestObsDistanceSqr < observationRadiusSqr:
+            if closestObsDistanceSqr < minDistanceSqr:
+                closestObsDistanceSqr = minDistanceSqr
+        globalReward += poiValueCol[poiIndex]*scale #/ closestObsDistanceSqr
+        #print(poiIndex,globalReward,scale,poiValueCol[poiIndex])
+
+    
+    for agentIndex in range(number_agents):
+        globalWithoutReward = 0
+        for poiIndex in range(number_pois):
+            closestObsDistanceSqr = Inf
+            for stepIndex in range(historyStepCount-1,historyStepCount):
+                # Count how many agents observe poi, update closest distance if necessary
+                observerCount = 0
+                stepClosestObsDistanceSqr = Inf
+                for otherAgentIndex in range(number_agents):
+                    if agentIndex != otherAgentIndex:
+                        # Calculate separation distance between poi and agent\
+                        separation0 = poiPositionCol[poiIndex, 0] - agentPositionHistory[otherAgentIndex, 0]
+                        separation1 = poiPositionCol[poiIndex, 1] - agentPositionHistory[otherAgentIndex, 1]
+                        distanceSqr = separation0 * separation0 + separation1 * separation1
+                        
+                        # Check if agent observes poi, update closest step distance
+                        if distanceSqr < observationRadiusSqr:
+                            observerCount += 1
+                            if distanceSqr < stepClosestObsDistanceSqr:
+                                stepClosestObsDistanceSqr = distanceSqr
+                            
+                            
+                # update closest distance only if poi is observed    
+                if observerCount >= coupling:
+                    scale=1.0
+                    if stepClosestObsDistanceSqr < closestObsDistanceSqr:
+                        closestObsDistanceSqr = stepClosestObsDistanceSqr
+                else:
+                    scale=float(observerCount)/float(coupling)
+            
+            # add to global reward if poi is observed 
+            if closestObsDistanceSqr < observationRadiusSqr:
+                if closestObsDistanceSqr < minDistanceSqr:
+                    closestObsDistanceSqr = minDistanceSqr
+            globalWithoutReward += poiValueCol[poiIndex]*scale #/ closestObsDistanceSqr
+        differenceRewardCol[agentIndex] = globalReward - globalWithoutReward
+        
+    data["Agent Rewards"] = npDifferenceRewardCol  
+    data["Global Reward"] = globalReward
+
+
+@cython.boundscheck(False)  # Deactivate bounds checking
+@cython.wraparound(False)   # Deactivate negative indexing.
+def assignGlobalReward2(data):
+    
+    cdef int number_agents = data['Number of Agents']
+    cdef int number_pois = data['Number of POIs'] 
+    cdef double minDistanceSqr = data["Minimum Distance"] ** 2
+    cdef int historyStepCount = data["Steps"] + 1
+    cdef int coupling = data["Coupling"]
+    cdef double observationRadiusSqr = data["Observation Radius"] ** 2
+    cdef double[:, :, :] agentPositionHistory = data["Agent Position History"]
+    cdef double[:] poiValueCol = data['Poi Values']
+    cdef double[:, :] poiPositionCol = data["Poi Positions"]
+    cdef stepIndex = data["Step Index"]
+    
+    cdef int poiIndex, agentIndex, observerCount
+    cdef double separation0, separation1, closestObsDistanceSqr, distanceSqr, stepClosestObsDistanceSqr
+    cdef double Inf = float("inf")
+    
+    cdef double globalReward = 0.0
+    
+    
+    for poiIndex in range(number_pois):
+        closestObsDistanceSqr = Inf
+        #for stepIndex in range(historyStepCount):
+        # Count how many agents observe poi, update closest distance if necessary
+        observerCount = 0
+        stepClosestObsDistanceSqr = 0
+        for agentIndex in range(number_agents):
+            # Calculate separation distance between poi and agent
+            separation0 = poiPositionCol[poiIndex, 0] - agentPositionHistory[stepIndex, agentIndex, 0]
+            separation1 = poiPositionCol[poiIndex, 1] - agentPositionHistory[stepIndex, agentIndex, 1]
+            distanceSqr = separation0 * separation0 + separation1 * separation1
+            
+            # Check if agent observes poi, update closest step distance
+            if distanceSqr < observationRadiusSqr:
+                observerCount += 1
+                #if distanceSqr > stepClosestObsDistanceSqr:
+                stepClosestObsDistanceSqr += distanceSqr
+
+        stepClosestObsDistanceSqr /= (float(observerCount)+0.001)   
+                    
+        # update closest distance only if poi is observed    
+        if observerCount >= coupling:
+            if stepClosestObsDistanceSqr < closestObsDistanceSqr:
+                closestObsDistanceSqr = stepClosestObsDistanceSqr
         
         # add to global reward if poi is observed 
         if closestObsDistanceSqr < observationRadiusSqr:
             if closestObsDistanceSqr < minDistanceSqr:
                 closestObsDistanceSqr = minDistanceSqr
-            globalReward += poiValueCol[poiIndex] / closestObsDistanceSqr
+            closestObsDistanceSqr=(observationRadiusSqr-closestObsDistanceSqr)/(observationRadiusSqr-minDistanceSqr)
+            globalReward += poiValueCol[poiIndex] * closestObsDistanceSqr
     
     data["Global Reward"] = globalReward
     data["Agent Rewards"] = np.ones(number_agents) * globalReward
@@ -60,7 +224,7 @@ def assignGlobalReward(data):
  
 @cython.boundscheck(False)  # Deactivate bounds checking
 @cython.wraparound(False)   # Deactivate negative indexing.
-def assignDifferenceReward(data):
+def assignDifferenceReward2(data):
     cdef int number_agents = data['Number of Agents']
     cdef int number_pois = data['Number of POIs'] 
     cdef double minDistanceSqr = data["Minimum Distance"] ** 2
@@ -83,7 +247,7 @@ def assignDifferenceReward(data):
     
     for poiIndex in range(number_pois):
         closestObsDistanceSqr = Inf
-        for stepIndex in range(historyStepCount):
+        for stepIndex in range(historyStepCount-1,historyStepCount):
             # Count how many agents observe poi, update closest distance if necessary
             observerCount = 0
             stepClosestObsDistanceSqr = Inf
@@ -109,14 +273,14 @@ def assignDifferenceReward(data):
         if closestObsDistanceSqr < observationRadiusSqr:
             if closestObsDistanceSqr < minDistanceSqr:
                 closestObsDistanceSqr = minDistanceSqr
-            globalReward += poiValueCol[poiIndex] / closestObsDistanceSqr
+            globalReward += poiValueCol[poiIndex] #/ closestObsDistanceSqr
 
     
     for agentIndex in range(number_agents):
         globalWithoutReward = 0
         for poiIndex in range(number_pois):
             closestObsDistanceSqr = Inf
-            for stepIndex in range(historyStepCount):
+            for stepIndex in range(historyStepCount-1,historyStepCount):
                 # Count how many agents observe poi, update closest distance if necessary
                 observerCount = 0
                 stepClosestObsDistanceSqr = Inf
@@ -143,7 +307,7 @@ def assignDifferenceReward(data):
             if closestObsDistanceSqr < observationRadiusSqr:
                 if closestObsDistanceSqr < minDistanceSqr:
                     closestObsDistanceSqr = minDistanceSqr
-                globalWithoutReward += poiValueCol[poiIndex] / closestObsDistanceSqr
+                globalWithoutReward += poiValueCol[poiIndex] #/ closestObsDistanceSqr
         differenceRewardCol[agentIndex] = globalReward - globalWithoutReward
         
     data["Agent Rewards"] = npDifferenceRewardCol  
@@ -181,7 +345,7 @@ def assignDppReward(data):
         for stepIndex in range(historyStepCount):
             # Count how many agents observe poi, update closest distance if necessary
             observerCount = 0
-            stepClosestObsDistanceSqr = Inf
+            stepClosestObsDistanceSqr = 0
             for agentIndex in range(number_agents):
                 # Calculate separation distance between poi and agent
                 separation0 = poiPositionCol[poiIndex, 0] - agentPositionHistory[stepIndex, agentIndex, 0]
@@ -191,7 +355,7 @@ def assignDppReward(data):
                 # Check if agent observes poi, update closest step distance
                 if distanceSqr < observationRadiusSqr:
                     observerCount += 1
-                    if distanceSqr < stepClosestObsDistanceSqr:
+                    if distanceSqr > stepClosestObsDistanceSqr:
                         stepClosestObsDistanceSqr = distanceSqr
                         
                         

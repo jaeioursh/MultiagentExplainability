@@ -112,6 +112,45 @@ cpdef doAgentProcess(data):
         actionCol[agentIndex] = policyCol[agentIndex].get_action(observationCol[agentIndex])
     data["Agent Actions"] = actionCol
 
+cpdef doAgentProcess2(data):
+    cdef int number_agents = data['Number of Agents']
+    actionCol = np.zeros((number_agents, 2), dtype = np.float_)
+    policyCol = data["Agent Policies"]
+    observationCol = data["Agent Observations"]
+    freq=data["Act Freq"]
+    cdef int widx=data["World Index"]
+
+    cdef int agentIndex
+    cdef int IDX
+    cdef float trn, dst1, dst2
+    for agentIndex in range(number_agents):
+        if widx%freq==0:
+            data["AActions"][agentIndex]=policyCol[agentIndex].get_action(observationCol[agentIndex])
+        IDX = data["AActions"][agentIndex]
+        
+        loc1=data["Poi Positions"][IDX]
+        loc2=data["Poi Positions"][IDX+4]
+        ang=data["Agent Orientations"][agentIndex]
+        pos=data["Agent Positions"][agentIndex]
+        heading1=[loc1[0]-pos[0],loc1[1]-pos[1]]
+        heading2=[loc2[0]-pos[0],loc2[1]-pos[1]]
+        dst1=(heading1[0]**2.0+heading1[1]**2.0)**0.5
+        dst2=(heading2[0]**2.0+heading2[1]**2.0)**0.5
+
+        if dst1>dst2:
+            heading=heading2
+        else:
+            heading=heading1
+        trn= np.arctan2( heading[1], heading[0] ) - np.arctan2(ang[1],ang[0])
+            
+        if trn>np.pi:
+            trn-=2*np.pi
+        if trn<-np.pi:
+            trn+=2*np.pi
+
+        actionCol[agentIndex]=[1.0,trn]
+    data["Agent Actions"] = actionCol
+
 @cython.boundscheck(False)  # Deactivate bounds checking
 @cython.wraparound(False)   # Deactivate negative indexing.  
 cpdef doAgentMove(data):
